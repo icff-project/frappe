@@ -8,7 +8,7 @@ import click
 
 import frappe
 from frappe import _
-from frappe.boot import get_allowed_pages, get_allowed_reports
+from frappe.desk.desk_views import DeskViews
 from frappe.model.document import Document
 from frappe.modules.export_file import strip_default_fields
 from frappe.modules.utils import create_directory_on_app_path
@@ -16,6 +16,8 @@ from frappe.utils.caching import site_cache
 
 
 class WorkspaceSidebar(Document):
+	_DOCTYPE_NAME = "Workspace Sidebar"
+
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -41,8 +43,8 @@ class WorkspaceSidebar(Document):
 			self.can_read = self.get_cached("user_perm_can_read", self.get_can_read_items)
 			self.allowed_modules = self.get_cached("user_allowed_modules", self.get_allowed_modules)
 
-		self.allowed_pages = get_allowed_pages(cache=True)
-		self.allowed_reports = get_allowed_reports(cache=True)
+		self.allowed_pages = DeskViews.get_allowed_pages(cache=True)
+		self.allowed_reports = DeskViews.get_allowed_reports(cache=True)
 		self.restricted_doctypes = frappe.cache.get_value("domain_restricted_doctypes")
 		self.restricted_pages = frappe.cache.get_value("domain_restricted_pages")
 
@@ -75,8 +77,9 @@ class WorkspaceSidebar(Document):
 			frappe.throw(_("You need to be Workspace Manager to delete a public workspace."))
 
 	def after_rename(self, old, new, merge):
-		delete_file(self.app, old)
-		self.export_sidebar()
+		if self.standard:
+			delete_file(self.app, old)
+			self.export_sidebar()
 
 	def is_item_allowed(self, name, item_type, allowed_workspaces):
 		if frappe.session.user == "Administrator":

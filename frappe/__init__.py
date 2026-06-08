@@ -22,13 +22,7 @@ import threading
 import warnings
 from collections import defaultdict
 from collections.abc import Callable, Iterable
-from typing import (
-	TYPE_CHECKING,
-	Any,
-	Optional,
-	TypeAlias,
-	Union,
-)
+from typing import TYPE_CHECKING, Any, Optional, TypeAlias, Union
 
 import orjson
 from werkzeug.datastructures import Headers
@@ -196,7 +190,8 @@ def init(site: str, sites_path: str = ".", new_site: bool = False, force: bool =
 	local.new_doc_templates = {}
 
 	local.request_cache = defaultdict(dict)
-	local.jenv = None
+	local.jenv_restricted = None
+	local.jenv_unrestricted = None
 	local.jloader = None
 	local.cache = {}
 	local.form_dict = _dict()
@@ -371,7 +366,8 @@ def set_user(username: str):
 	local.session.sid = username
 	local.cache = {}
 	local.form_dict = _dict()
-	local.jenv = None
+	local.jenv_restricted = None
+	local.jenv_unrestricted = None
 	local.session.data = _dict()
 	local.role_permissions = {}
 	local.new_doc_templates = {}
@@ -1591,6 +1587,7 @@ from frappe.model.meta import get_meta
 from frappe.realtime import publish_progress, publish_realtime
 from frappe.utils import get_traceback, mock, parse_json, safe_eval, create_folder
 from frappe.utils.background_jobs import enqueue, enqueue_doc
+from frappe.utils.task_queue import enqueue_task, get_current_task
 from frappe.utils.error import log_error
 from frappe.utils.formatters import format_value
 from frappe.utils.print_utils import get_print, attach_print
