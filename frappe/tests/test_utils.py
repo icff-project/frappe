@@ -1016,7 +1016,7 @@ class TestResponse(IntegrationTestCase):
 	def test_orjson_dumps_big_int_fallback(self):
 		"""orjson cannot encode ints outside the signed 64-bit range; orjson_dumps
 		must fall back to stdlib json (preserving the value) instead of raising.
-		Regression for framework#119 — zxcvbn 'guesses' routinely exceed 2**64, which
+		Regression for framework#23 — zxcvbn 'guesses' routinely exceed 2**64, which
 		made strong-password (test_password_strength) responses 500."""
 		import orjson
 
