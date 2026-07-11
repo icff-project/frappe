@@ -345,6 +345,10 @@ def _get_traceback_sanitizer():
 		"token",
 		"key",
 		"pwd",
+		# ICFF patch: upstream omits "passphrase", so a `passphrase` local (e.g. the
+		# PayFast signature passphrase) leaked verbatim into the Error Log via
+		# frappe.get_traceback(with_context=True). Redact it (icff_frappe fork).
+		"passphrase",
 	]
 
 	placeholder = "********"
