@@ -19,15 +19,18 @@ def resolve_intercepted_public_path(clean_path: str) -> tuple[str, bool]:
 	resolved path is inside the bench ``assets/`` tree (for ``assets/…`` urls) or
 	anywhere under the site's ``public/`` root (everything else).
 
-	icff-project/framework#154 (fork patch) — the non-asset branch previously
+	PR-Foundry/framework#83 (fork patch) — the non-asset branch previously
 	required the path under ``public/files`` (native Frappe uploads). Apps that
 	serve public files from another sub-tree — notably ``dfp_external_storage``,
 	which rewrites external-storage File urls to ``/file/<name>/<filename>`` —
-	fell outside that and were hard-blocked (``Fetch.failRequest``), aborting the
-	print → ``KeyError: 'result'`` in ``get_pdf_stream_id``. Widening to the whole
-	``public/`` root lets those render while still blocking path-traversal escapes.
-	Upstream-owned line — re-verify after any frappe sync. Guarded by
-	``icff_membership.tests.test_pdf_generator_public_path``.
+	fell outside that and were hard-blocked (``Fetch.failRequest``). A blocked
+	sub-resource aborts the headless print and surfaces as ``KeyError: 'result'``
+	in ``get_pdf_stream_id``, so e.g. a POS invoice embedding a webshop product
+	image never emails. Widening the boundary to the whole ``public/`` root lets
+	those render (or fall through to an HTTP fetch) while still blocking
+	path-traversal escapes outside ``public/`` / ``assets/``. Upstream-owned line
+	— re-verify after any frappe sync. Guarded by
+	``client_app.tests.test_pdf_generator_public_path``.
 	"""
 	import os
 
