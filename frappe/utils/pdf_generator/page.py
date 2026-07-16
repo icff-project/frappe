@@ -45,6 +45,40 @@ def resolve_intercepted_public_path(clean_path: str) -> tuple[str, bool]:
 	return final_system_path, is_safe
 
 
+def classify_intercepted_path(clean_path: str) -> tuple[str, str]:
+	"""Classify a same-host resource intercepted during PDF generation.
+
+	Returns ``(final_system_path, action)`` where ``action`` is one of:
+
+	* ``"serve"``    — inside the servable tree AND a real file  → read + ``Fetch.fulfillRequest``
+	* ``"block"``    — outside the tree (path-traversal escape)  → ``Fetch.failRequest``
+	* ``"continue"`` — inside the tree but NOT a servable file
+	  (a directory such as the ``public/`` root, or a missing file) → ``Fetch.continueRequest``
+
+	icff-project/framework#156 (fork patch) — ``resolve_intercepted_public_path``
+	reports ``is_safe=True`` for anything under the site ``public/`` tree,
+	*including the ``public/`` root directory itself and any URL resolving to a
+	directory or a missing file*. The old callback fed that straight to
+	``frappe.read_file``, whose ``open()`` raises ``IsADirectoryError`` (directory)
+	or ``FileNotFoundError`` (missing) **inside the CDP listener thread** — the
+	listener dies, the render future never resolves, and ``get_pdf`` hangs holding
+	the request's DB locks (surfacing as ``1205 Lock wait timeout`` on any
+	concurrent Sales Invoice / naming-series write). A non-file must therefore fall
+	through to ``continueRequest`` (let Chrome fetch it) — NOT ``failRequest``,
+	which aborts the headless page load → ``KeyError: 'result'`` (framework#154).
+	Upstream-owned line — re-verify after any frappe sync. Guarded by
+	``icff_membership.tests.test_pdf_generator_public_path``.
+	"""
+	import os
+
+	final_system_path, is_safe = resolve_intercepted_public_path(clean_path)
+	if not is_safe:
+		return final_system_path, "block"
+	if os.path.isfile(final_system_path):
+		return final_system_path, "serve"
+	return final_system_path, "continue"
+
+
 class Page:
 	def __init__(self, session, browser_context_id, page_type):
 		self.session = session
@@ -163,15 +197,27 @@ class Page:
 					path = url.replace(get_host_url(), "").split("?v", 1)[0]
 					clean_path = urllib.parse.unquote(path)
 
-					final_system_path, is_safe = resolve_intercepted_public_path(clean_path)
+					final_system_path, action = classify_intercepted_path(clean_path)
 
-					if is_safe:
-						content = frappe.read_file(final_system_path, as_base64=True)
-						response_headers = []
-						# write logic to handle all file types as required
-						if path.endswith(".svg"):
-							response_headers.append({"name": "Content-Type", "value": "image/svg+xml"})
+					if action == "serve":
+						# read_file on a non-file raises inside this CDP listener thread and
+						# hangs the whole render with the request's DB locks held — classify
+						# already guarantees a real file here, but keep a try/except backstop
+						# so a read error (permissions, race) can never kill the listener:
+						# log and fall through to continueRequest (framework#156).
+						content = None
+						try:
+							content = frappe.read_file(final_system_path, as_base64=True)
+						except Exception:
+							frappe.log_error(
+								title="PDF Generator: intercepted file read failed",
+								message=f"{final_system_path}\n{frappe.get_traceback()}",
+							)
 						if content:
+							response_headers = []
+							# write logic to handle all file types as required
+							if path.endswith(".svg"):
+								response_headers.append({"name": "Content-Type", "value": "image/svg+xml"})
 							self.session.send(
 								"Fetch.fulfillRequest",
 								{
@@ -183,7 +229,7 @@ class Page:
 								return_future=True,
 							)
 							return
-					elif path:
+					elif action == "block" and path:
 						self.session.send(
 							"Fetch.failRequest",
 							{"requestId": data["request_id"], "errorReason": "AccessDenied"},
